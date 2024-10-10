@@ -44,7 +44,7 @@ jobs:
       run : mvn jacoco:report
     # Upload code-coverage report as an artifact   
     - name: Code Coverage Report
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
        name: jacoco-report
        path: target/site/jacoco/index.html
