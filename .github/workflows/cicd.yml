@@ -12,40 +12,48 @@ permissions:
   id-token: write
   contents: read
 
-# Define the jobs to be executed in the workflow
+# The jobs to be executed in the workflow
 jobs:
   # CI Job
   ci:
     runs-on: ubuntu-latest
     steps:
+      # Set short git commit SHA
       - name: Set short git commit SHA
         id: commit
         uses: prompt/actions-commit-hash@v2
 
+      # Check out repository's code into workflow's workspace
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Set up JDK 17
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
+      # Run unit tests using Maven goal
       - name: Run unit test
         run: mvn test
 
+      # Generate code-coverage report using JaCoCo
       - name: Get code-coverage report
         run: mvn jacoco:report
 
+      # Upload code-coverage report as an artifact
       - name: Code Coverage Report
         uses: actions/upload-artifact@v3
         with:
           name: jacoco-report
           path: target/site/jacoco/index.html
 
+      # Build the project and package the jar
       - name: Build project and package jar
         run: mvn package -Dmaven.test.skip
 
+      # Configure AWS credentials for ECR and EC2
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
@@ -53,10 +61,11 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      # Authenticate AWS with Docker to interact with Amazon ECR
       - name: Login to Amazon ECR
-        run: |
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+        run: aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
 
+      # Build the Docker image and tag it with the commit SHA
       - name: Build Docker Image
         env:
           IMAGE_TAG: ${{ steps.commit.outputs.short }}
@@ -64,7 +73,21 @@ jobs:
           docker build -t demo-repo:${{ github.sha }} .
           docker tag demo-repo:${{ github.sha }} ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/demo-repo:${{ github.sha }}
 
-      - name: Push Docker Image to Amazon ECR
+      # Run Trivy vulnerability scanner
+      - name: Run Trivy vulnerability scanner
+        id: trivy-scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/demo-repo:${{ github.sha }}
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+        continue-on-error: true
+
+      # Push Docker image to Amazon ECR
+      - name: Push Docker image
         run: |
           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/demo-repo:${{ github.sha }}
 
@@ -72,12 +95,21 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      # Ensure .ssh directory exists
       - name: Ensure .ssh directory exists
         run: mkdir -p ~/.ssh
 
+      # Add SSH private key
+      - name: Add SSH private key
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      # Add EC2 public key to known_hosts
       - name: Add EC2 public key to known_hosts
         run: ssh-keyscan -H ${{ secrets.INSTANCE_PUBLIC_IP }} >> ~/.ssh/known_hosts
 
+      # Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
@@ -85,6 +117,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      # Deploy to EC2 with Docker
       - name: Deploy to EC2 with Docker
         run: |
           ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.INSTANCE_PUBLIC_IP }} '
