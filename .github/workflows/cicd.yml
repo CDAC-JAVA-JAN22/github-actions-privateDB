@@ -131,18 +131,10 @@ jobs:
               unzip -o awscliv2.zip &&
               sudo ./aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli
             else
-              echo "AWS CLI is already installed. Updating..."
-              sudo /usr/local/aws-cli/v2/current/bin/aws --version
-              curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &&
-              unzip -o awscliv2.zip &&
-              sudo ./aws/install --update
+              echo "AWS CLI is already installed. Skipping install."
             fi &&
 
-            # Add user to Docker group and apply changes
-            sudo usermod -aG docker $USER &&
-            newgrp docker &&
-
-            # Log in to ECR with AWS CLI non-interactively
+            # Login to ECR non-interactively
             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com &&
 
             # Pull Docker image from ECR
