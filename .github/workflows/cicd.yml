@@ -120,9 +120,16 @@ jobs:
 
           # SSH into EC2 and perform deployment tasks
           ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.INSTANCE_PUBLIC_IP }} '
-            # Update package list and install AWS CLI
+            # Update package list and install required packages
             sudo apt update &&
-            sudo apt install -y awscli &&
+            
+            # Install curl and unzip if not present
+            sudo apt install -y curl unzip &&
+            
+            # Install AWS CLI v2
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &&
+            unzip awscliv2.zip &&
+            sudo ./aws/install &&
 
             # Add user to Docker group and apply changes
             sudo usermod -aG docker $USER &&
