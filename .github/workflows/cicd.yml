@@ -22,7 +22,7 @@ jobs:
     steps:
     - name: Set short git commit SHA
       id: commit
-      uses: prompt/actions-commit-hash@v3
+      uses: prompt/actions-commit-hash@v2
     
     # check out repository's code into workflow's workspace
     - name: Checkout code
@@ -45,7 +45,7 @@ jobs:
       
     # Upload code-coverage report as an artifact   
     - name: Code Coverage Report
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
        name: jacoco-report
        path: target/site/jacoco/index.html
