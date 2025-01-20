@@ -42,7 +42,6 @@ jobs:
       - name: Build project and package jar
         run: mvn package -Dmaven.test.skip
 
-      # Configure AWS credentials for the CI job
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
@@ -51,8 +50,7 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login to Amazon ECR
-        run: |
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+        run: aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
 
       - name: Build Docker Image
         env:
@@ -122,10 +120,10 @@ jobs:
           ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.INSTANCE_PUBLIC_IP }} '
             # Update package list and install required packages
             sudo apt update &&
-            
+
             # Install curl and unzip if not present
             sudo apt install -y curl unzip &&
-            
+
             # Install AWS CLI v2
             curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &&
             unzip awscliv2.zip &&
@@ -136,7 +134,7 @@ jobs:
             newgrp docker &&
 
             # Log in to ECR with AWS CLI non-interactively
-            $(aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sed 's|https://||' | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com) &&
+            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com &&
 
             # Pull Docker image from ECR
             sudo docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/demo-repo:${{ github.sha }} &&
