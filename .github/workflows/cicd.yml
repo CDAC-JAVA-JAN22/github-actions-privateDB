@@ -10,7 +10,6 @@ permissions:
   contents: read
 
 jobs:
-  # CI Job
   ci:
     runs-on: ubuntu-latest
     steps:
@@ -63,7 +62,6 @@ jobs:
         run: |
           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/demo-repo:${{ github.sha }}
 
-  # CD Job
   deploy:
     needs: ci
     runs-on: ubuntu-latest
