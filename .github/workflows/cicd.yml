@@ -123,53 +123,19 @@ jobs:
     
   # CD job
   Deploy:
-    needs: ci                # This ensures that the deployment process only runs when the Docker image has been successfully built and pushed to Amazon ECR
-    name: Deploy to EC2
-    runs-on: ubuntu-latest
-  
-    steps:
-      # Checkout the repository
-      - name: Checkout code      
-        uses: actions/checkout@v2
-
-      # Create known_hosts file inside SSH directory 
-      - name: Create SSH directory and known_hosts file
-        run: |
-            mkdir -p ~/.ssh
-            touch ~/.ssh/known_hosts
-
-      # Add private key to id_rsa
-      - name: Extract SSH private key
-        run: echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-        shell: bash
-
-      # Grant read-write permission to id_rsa
-      - name: Set proper permissions for the private key
-        run: chmod 600 ~/.ssh/id_rsa
-
-      # Install SSH Client
-      - name: Install SSH Client
-        run: sudo apt-get install -y openssh-client 
-
-      # Build trust between GitHub and AWS using OIDC connector
-      - name: configure aws credentials
-        uses: aws-actions/configure-aws-credentials@v3
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      # Pulling image from ECR and deploying on EC2 which contains docker
-      - name: Deploy to EC2 with Docker   # In this step we are deploying our application on EC2 instance
-        run: |
-            ssh-keyscan -H ${{ secrets.INSTANCE_PUBLIC_IP }} >> ~/.ssh/known_hosts
-            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-            ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.INSTANCE_PUBLIC_IP }} '
-               sudo usermod -aG docker $USER
-               newgrp docker
-               aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-               sudo docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/demo-repo
-               sudo docker run -d -p 8080:8080 ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/demo-repo:${{ github.sha }}
+    # Pulling image from ECR and deploying on EC2 which contains docker
+              - name: Deploy to EC2 with Docker   # In this step we are deploying our application on EC2 instance
+                run: |
+                  ssh-keyscan -H ${{ secrets.INSTANCE_PUBLIC_IP }} >> ~/.ssh/known_hosts
+                    aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID}}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+                  ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.INSTANCE_PUBLIC_IP }} '
+                    sudo usermod -aG docker $USER
+                    newgrp docker
+                    sudo docker images
+                    sudo aws ecr describe-repositories
+                    aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID}}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+                    sudo docker pull ${{ secrets.AWS_ACCOUNT_ID}}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPO_NAME }}:${{ github.sha }}
+                    sudo docker run -d -p 5000:5000 ${{ secrets.AWS_ACCOUNT_ID}}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPO_NAME }}:${{ github.sha }}
             '
 
 #       # ssh-keyscan: This is the command-line utility used to gather public host keys from a specified host. In this case, it's scanning the host specified by the value of the INSTANCE_PUBLIC_IP secret.
