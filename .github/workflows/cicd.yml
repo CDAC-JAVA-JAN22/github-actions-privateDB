@@ -124,10 +124,19 @@ jobs:
             # Install curl and unzip if not present
             sudo apt install -y curl unzip &&
 
-            # Install AWS CLI v2 non-interactively
-            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &&
-            unzip -o awscliv2.zip && 
-            sudo ./aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli &&
+            # Check if AWS CLI is already installed, if not, install it
+            if ! command -v aws &> /dev/null; then
+              echo "AWS CLI not found, installing..."
+              curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &&
+              unzip -o awscliv2.zip &&
+              sudo ./aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli
+            else
+              echo "AWS CLI is already installed. Updating..."
+              sudo /usr/local/aws-cli/v2/current/bin/aws --version
+              curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &&
+              unzip -o awscliv2.zip &&
+              sudo ./aws/install --update
+            fi &&
 
             # Add user to Docker group and apply changes
             sudo usermod -aG docker $USER &&
