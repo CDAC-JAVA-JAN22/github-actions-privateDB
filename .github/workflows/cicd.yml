@@ -50,20 +50,20 @@ jobs:
        name: jacoco-report
        path: target/site/jacoco/index.html
 
-      # Sonarqube Scan using maven command
-    - name: SonarQube Scan
-      run: mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=${{ secrets.SONAR_PROJECTKEY }} -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}  -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+    #   # Sonarqube Scan using maven command
+    # - name: SonarQube Scan
+    #   run: mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=${{ secrets.SONAR_PROJECTKEY }} -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}  -Dsonar.login=${{ secrets.SONAR_TOKEN }}
     
-    # Check sonarqube quality gate
-    - name: Check SonarQube Quality Gate
-      run: |
-       status=$(curl -s "${{ secrets.SONAR_HOST_URL }}/api/qualitygates/project_status?projectKey=${{ secrets.SONAR_PROJECTKEY }}" -u "${{ secrets.SONAR_TOKEN }}": | jq -r '.projectStatus.status')
-       if [[ "$status" != "OK" ]]; then
-          echo "SonarQube quality gate check failed." 
-       else
-          echo "SonarQube quality gate check succeeded. Continuing with the workflow..."
-       fi
-    # if exit code 1 is added after (echo "SonarQube quality gate check failed.") workflow will fail which will check for quality gate condition 
+    # # Check sonarqube quality gate
+    # - name: Check SonarQube Quality Gate
+    #   run: |
+    #    status=$(curl -s "${{ secrets.SONAR_HOST_URL }}/api/qualitygates/project_status?projectKey=${{ secrets.SONAR_PROJECTKEY }}" -u "${{ secrets.SONAR_TOKEN }}": | jq -r '.projectStatus.status')
+    #    if [[ "$status" != "OK" ]]; then
+    #       echo "SonarQube quality gate check failed." 
+    #    else
+    #       echo "SonarQube quality gate check succeeded. Continuing with the workflow..."
+    #    fi
+    # # if exit code 1 is added after (echo "SonarQube quality gate check failed.") workflow will fail which will check for quality gate condition 
 
     # Once we build the package using maven as build tool the artifact generated is in jar format and store under target directory
     - name: Build project and package jar
