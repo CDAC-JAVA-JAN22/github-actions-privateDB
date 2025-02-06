@@ -1,4 +1,4 @@
-name: Java CI with Maven
+name: Deploy Java App to GCP VM
 
 on:
   push:
@@ -10,14 +10,11 @@ permissions:
   contents: read
 
 jobs:
-  ci:
+  build:
     runs-on: ubuntu-latest
-    steps:
-      - name: Set short git commit SHA
-        id: commit
-        uses: prompt/actions-commit-hash@v2
 
-      - name: Checkout code
+    steps:
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -26,119 +23,47 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Run unit test
+      - name: Run Unit Tests
         run: mvn test
 
-      - name: Get code-coverage report
-        run: mvn jacoco:report
+      - name: Build Project and Package JAR
+        run: mvn package -DskipTests
 
-      - name: Code Coverage Report
-        uses: actions/upload-artifact@v3
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
         with:
-          name: jacoco-report
-          path: target/site/jacoco/index.html
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Build project and package jar
-        run: mvn package -Dmaven.test.skip
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
 
-      # Build trust between GitHub and AWS using OIDC connector
-      - name: Configure AWS credentials (using OIDC)
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          role-to-assume: ${{ secrets.AWS_IAM_ARN }}
-          role-session-name: samplerolesession
-          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Configure Docker for Google Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev
 
-      - name: Login to Amazon ECR
-        run: aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-
-      - name: Build Docker Image
-        env:
-          IMAGE_TAG: ${{ steps.commit.outputs.short }}
+      - name: Build and Push Docker Image
         run: |
-          docker build -t demo-repo:${{ github.sha }} .
-          docker tag demo-repo:${{ github.sha }} ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/demo-repo:${{ github.sha }}
-
-      - name: Push Docker image
-        run: |
-          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/demo-repo:${{ github.sha }}
+          IMAGE_NAME=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/my-repo/java-app:latest
+          docker build -t $IMAGE_NAME .
+          docker push $IMAGE_NAME
 
   deploy:
-    needs: ci
+    needs: build
     runs-on: ubuntu-latest
+
     steps:
-      # Checkout the repository
-      - name: Checkout code      
-        uses: actions/checkout@v2
-
-      # Create known_hosts file inside SSH directory 
-      - name: Create SSH directory and known_hosts file
-        run: |
-            mkdir -p ~/.ssh
-            touch ~/.ssh/known_hosts
-
-      # Add private key to id_rsa
-      - name: Extract SSH private key
-        run: echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-        shell: bash
-
-      # Grant read-write permission to id_rsa
-      - name: Set proper permissions for the private key
-        run: chmod 600 ~/.ssh/id_rsa
-
-      # Install SSH Client
-      - name: Install SSH Client
-        run: sudo apt-get install -y openssh-client
-
-      # Build trust between GitHub and AWS using OIDC connector for deployment
-      - name: Configure AWS credentials (using OIDC)
-        uses: aws-actions/configure-aws-credentials@v1
+      - name: SSH into GCP VM and Deploy
+        uses: appleboy/ssh-action@v0.1.10
         with:
-          role-to-assume: ${{ secrets.AWS_IAM_ARN }}
-          role-session-name: samplerolesession
-          aws-region: ${{ secrets.AWS_REGION }}
+          host: ${{ secrets.GCP_VM_IP }}
+          username: ${{ secrets.GCP_SSH_USER }}
+          key: ${{ secrets.GCP_SSH_KEY }}
+          script: |
+            sudo apt update -y
+            sudo apt install -y docker.io
+            gcloud auth configure-docker us-central1-docker.pkg.dev
 
-      # Docker login to ECR
-      - name: Docker login to ECR
-        run: |
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-
-      # Configure Docker credential helper
-      - name: Configure Docker credential helper
-        run: |
-          mkdir -p ~/.docker
-          echo '{"credsStore": "ecr-login"}' > ~/.docker/config.json
-
-      # Deploy to EC2 with Docker
-      - name: Deploy to EC2 with Docker
-        run: |
-          # Add EC2 instance to known hosts
-          ssh-keyscan -H ${{ secrets.INSTANCE_PUBLIC_IP }} >> ~/.ssh/known_hosts
-
-          # SSH into EC2 and perform deployment tasks
-          ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.INSTANCE_PUBLIC_IP }} '
-            # Update package list and install required packages
-            sudo apt update &&
-
-            # Install curl and unzip if not present
-            sudo apt install -y curl unzip &&
-
-            # Check if AWS CLI is already installed, if not, install it
-            if ! command -v aws &> /dev/null; then
-              echo "AWS CLI not found, installing..."
-              curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &&
-              unzip -o awscliv2.zip &&
-              sudo ./aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli
-            else
-              echo "AWS CLI is already installed. Skipping install."
-            fi &&
-
-            # Login to ECR non-interactively
-            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com &&
-
-            # Pull Docker image from ECR
-            sudo docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/demo-repo:${{ github.sha }} &&
-
-            # Run Docker container in detached mode
-            sudo docker run -d -p 8080:8080 ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/demo-repo:${{ github.sha }}
-          '
+            # Pull and Run Docker Image
+            docker pull us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/my-repo/java-app:latest
+            docker stop java-app || true
+            docker rm java-app || true
+            docker run -d --name java-app -p 8080:8080 --env-file .env us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/my-repo/java-app:latest
