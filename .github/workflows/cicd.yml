@@ -45,7 +45,7 @@ jobs:
       
     # Upload code-coverage report as an artifact   
     - name: Code Coverage Report
-      uses: actions/upload-artifact@v3.1.0
+      uses: actions/upload-artifact@v3.2.0
       with:
        name: jacoco-report
        path: target/site/jacoco/index.html
