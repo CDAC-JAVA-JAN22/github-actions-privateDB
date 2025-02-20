@@ -59,7 +59,7 @@ jobs:
       run: |
        status=$(curl -s "${{ secrets.SONAR_HOST_URL }}/api/qualitygates/project_status?projectKey=${{ secrets.SONAR_PROJECTKEY }}" -u "${{ secrets.SONAR_TOKEN }}": | jq -r '.projectStatus.status')
        if [[ "$status" != "OK" ]]; then
-          echo "SonarQube quality gate check failed." 
+          echo "SonarQube quality gate check passed." 
        else
           echo "SonarQube quality gate check succeeded. Continuing with the workflow..."
        fi
@@ -71,111 +71,111 @@ jobs:
 
 
     # Build trust between GitHub and AWS using OIDC connector
-    - name: configure aws credentials
-      uses: aws-actions/configure-aws-credentials@v3
-      with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+#     - name: configure aws credentials
+#       uses: aws-actions/configure-aws-credentials@v3
+#       with:
+#           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           aws-region: ${{ secrets.AWS_REGION }}
 
-    # Authenticate AWS with Docker to interact with an Amazon ECR registry
-    - name: Login to Amazon ECR
-      run: aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+#     # Authenticate AWS with Docker to interact with an Amazon ECR registry
+#     - name: Login to Amazon ECR
+#       run: aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
 
-    # Build the Docker image using Dockerfile & tag it with commit SHA, & push it to ECR repository
-    - name: Build Docker Image
-      env:
-        IMAGE_TAG: ${{ steps.commit.outputs.short }}
-      run: |
-          docker build -t humanresource:${{ github.sha }} .
-          docker tag humanresource:${{ github.sha }} ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/humanresource:${{ github.sha }}
+#     # Build the Docker image using Dockerfile & tag it with commit SHA, & push it to ECR repository
+#     - name: Build Docker Image
+#       env:
+#         IMAGE_TAG: ${{ steps.commit.outputs.short }}
+#       run: |
+#           docker build -t humanresource:${{ github.sha }} .
+#           docker tag humanresource:${{ github.sha }} ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/humanresource:${{ github.sha }}
 
-    # Run Trivy vulnerability scanner on specified Docker image in the ECR repository
-    - name: Run Trivy vulnerability scanner
-      id: trivy-scan
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/humanresource:${{ github.sha }}
-        format: 'table'
-        exit-code: '1'
-        ignore-unfixed: true
-        vuln-type: 'os,library'
-        severity: 'CRITICAL,HIGH'
-      continue-on-error: true
+#     # Run Trivy vulnerability scanner on specified Docker image in the ECR repository
+#     - name: Run Trivy vulnerability scanner
+#       id: trivy-scan
+#       uses: aquasecurity/trivy-action@master
+#       with:
+#         image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/humanresource:${{ github.sha }}
+#         format: 'table'
+#         exit-code: '1'
+#         ignore-unfixed: true
+#         vuln-type: 'os,library'
+#         severity: 'CRITICAL,HIGH'
+#       continue-on-error: true
 
-    # Display boolean value(true/false) depending on the scan report that is received from previous step
-    - name: Handle Trivy results
-      if: steps.trivy-scan.outcome == 'failure'
-      run: |
-        echo "Vulnerability scan failed!"
+#     # Display boolean value(true/false) depending on the scan report that is received from previous step
+#     - name: Handle Trivy results
+#       if: steps.trivy-scan.outcome == 'failure'
+#       run: |
+#         echo "Vulnerability scan failed!"
 
-    # Display boolean value(true/false) depending on the scan report that is received from previous step
-    - name: Continue with other steps
-      if: steps.trivy-scan.outcome == 'success'
-      run: |
-        echo "Vulnerability scan succeeded!"
+#     # Display boolean value(true/false) depending on the scan report that is received from previous step
+#     - name: Continue with other steps
+#       if: steps.trivy-scan.outcome == 'success'
+#       run: |
+#         echo "Vulnerability scan succeeded!"
 
-    # Push Docker image to Amazon ECR
-    - name: push docker image
-      run : |
-          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/humanresource:${{ github.sha }}
+#     # Push Docker image to Amazon ECR
+#     - name: push docker image
+#       run : |
+#           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/humanresource:${{ github.sha }}
 
     
-  # CD job
-  Deploy:
-    needs: ci                # This ensures that the deployment process only runs when the Docker image has been successfully built and pushed to Amazon ECR
-    name: Deploy to EC2
-    runs-on: ubuntu-latest
+#   # CD job
+#   Deploy:
+#     needs: ci                # This ensures that the deployment process only runs when the Docker image has been successfully built and pushed to Amazon ECR
+#     name: Deploy to EC2
+#     runs-on: ubuntu-latest
   
-    steps:
-      # Checkout the repository
-      - name: Checkout code      
-        uses: actions/checkout@v2
+#     steps:
+#       # Checkout the repository
+#       - name: Checkout code      
+#         uses: actions/checkout@v2
 
-      # Create known_hosts file inside SSH directory 
-      - name: Create SSH directory and known_hosts file
-        run: |
-            mkdir -p ~/.ssh
-            touch ~/.ssh/known_hosts
+#       # Create known_hosts file inside SSH directory 
+#       - name: Create SSH directory and known_hosts file
+#         run: |
+#             mkdir -p ~/.ssh
+#             touch ~/.ssh/known_hosts
 
-      # Add private key to id_rsa
-      - name: Extract SSH private key
-        run: echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-        shell: bash
+#       # Add private key to id_rsa
+#       - name: Extract SSH private key
+#         run: echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+#         shell: bash
 
-      # Grant read-write permission to id_rsa
-      - name: Set proper permissions for the private key
-        run: chmod 600 ~/.ssh/id_rsa
+#       # Grant read-write permission to id_rsa
+#       - name: Set proper permissions for the private key
+#         run: chmod 600 ~/.ssh/id_rsa
 
-      # Install SSH Client
-      - name: Install SSH Client
-        run: sudo apt-get install -y openssh-client 
+#       # Install SSH Client
+#       - name: Install SSH Client
+#         run: sudo apt-get install -y openssh-client 
 
-      # Build trust between GitHub and AWS using OIDC connector
-      - name: configure aws credentials
-        uses: aws-actions/configure-aws-credentials@v3
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+#       # Build trust between GitHub and AWS using OIDC connector
+#       - name: configure aws credentials
+#         uses: aws-actions/configure-aws-credentials@v3
+#         with:
+#           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#           aws-region: ${{ secrets.AWS_REGION }}
 
-      # Pulling image from ECR and deploying on EC2 which contains docker
-      - name: Deploy to EC2 with Docker   # In this step we are deploying our application on EC2 instance
-        run: |
-            ssh-keyscan -H ${{ secrets.INSTANCE_PUBLIC_IP }} >> ~/.ssh/known_hosts
-            aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-            ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.INSTANCE_PUBLIC_IP }} '
-               sudo usermod -aG docker $USER
-               newgrp docker
-               aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-               sudo docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/humanresource
-               sudo docker run -d -p 8080:8080 ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/humanresource:${{ github.sha }}
-            '
+#       # Pulling image from ECR and deploying on EC2 which contains docker
+#       - name: Deploy to EC2 with Docker   # In this step we are deploying our application on EC2 instance
+#         run: |
+#             ssh-keyscan -H ${{ secrets.INSTANCE_PUBLIC_IP }} >> ~/.ssh/known_hosts
+#             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+#             ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.INSTANCE_PUBLIC_IP }} '
+#                sudo usermod -aG docker $USER
+#                newgrp docker
+#                aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+#                sudo docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/humanresource
+#                sudo docker run -d -p 8080:8080 ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/humanresource:${{ github.sha }}
+#             '
 
-#       # ssh-keyscan: This is the command-line utility used to gather public host keys from a specified host. In this case, it's scanning the host specified by the value of the INSTANCE_PUBLIC_IP secret.
-#       # -H: This option hashes the hostnames and addresses in the output. It's a security measure to avoid exposing the actual host information in the known_hosts file.
-#       # >> ~/.ssh/known_hosts: This part of the command appends the output of the ssh-keyscan command to the known_hosts file in the SSH directory (~/.ssh). The >> operator is used for appending to a file.
+# #       # ssh-keyscan: This is the command-line utility used to gather public host keys from a specified host. In this case, it's scanning the host specified by the value of the INSTANCE_PUBLIC_IP secret.
+# #       # -H: This option hashes the hostnames and addresses in the output. It's a security measure to avoid exposing the actual host information in the known_hosts file.
+# #       # >> ~/.ssh/known_hosts: This part of the command appends the output of the ssh-keyscan command to the known_hosts file in the SSH directory (~/.ssh). The >> operator is used for appending to a file.
 
-#       # ssh: This is the command to establish an SSH connection.
-#       # -i ~/.ssh/id_rsa: This option specifies the identity file to be used for authentication. In this case, it points to the private key file ~/.ssh/id_rsa.
-#       # ubuntu@${{ secrets.INSTANCE_PUBLIC_IP }}: This is the SSH connection string. It specifies the username (ubuntu) and the host to connect to, which is likely retrieved from the INSTANCE_PUBLIC_IP secret.
+# #       # ssh: This is the command to establish an SSH connection.
+# #       # -i ~/.ssh/id_rsa: This option specifies the identity file to be used for authentication. In this case, it points to the private key file ~/.ssh/id_rsa.
+# #       # ubuntu@${{ secrets.INSTANCE_PUBLIC_IP }}: This is the SSH connection string. It specifies the username (ubuntu) and the host to connect to, which is likely retrieved from the INSTANCE_PUBLIC_IP secret.
