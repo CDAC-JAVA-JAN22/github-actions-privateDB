@@ -6,7 +6,7 @@ name: Java CI with Maven
 on:
   push:
     branches:
-      - feature-v.1
+      - main
 
 # Define permissions required for the OIDC connection
 permissions:
