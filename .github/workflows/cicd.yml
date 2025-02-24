@@ -1,4 +1,3 @@
-# Define the CI/CD Workflow for Java code
 name: Java CI with Maven
 
 # Trigger the workflow on pushes to the specified branch
@@ -17,14 +16,13 @@ jobs:
   # CI Job
   ci:
     runs-on: ubuntu-latest   # self-hosted  
-    
     # Define the steps to be executed in the job
     steps:
     - name: Set short git commit SHA
       id: commit
       uses: prompt/actions-commit-hash@v2
     
-    # check out repository's code into workflow's workspace
+    # Check out repository's code into workflow's workspace
     - name: Checkout code
       uses: actions/checkout@v4
 
@@ -35,26 +33,14 @@ jobs:
        distribution: 'temurin'
        java-version: '17'
 
-    # Authenticate with Google Cloud using Service Account key stored in GitHub Secrets
-    - name: Set up Google Cloud SDK
-      uses: google-github-actions/setup-gcloud@v3
-      with:
-        project_id: YOUR_PROJECT_ID      # Replace with your Google Cloud project ID
-        credentials_json: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}  # Use the secret containing the Service Account key
-
-    - name: Authenticate to Google Cloud
-      run: |
-        gcloud auth activate-service-account --key-file="${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}"
-        gcloud config set project YOUR_PROJECT_ID   # Replace with your Google Cloud project ID
-
     # Run unit tests using maven goal
     - name: Run unit test
       run: mvn test
 
     # Generate code-coverage report using jacoco
-    - name : Get code-coverage report
-      run : mvn jacoco:report
-     
+    - name: Get code-coverage report
+      run: mvn jacoco:report
+
     # Upload code-coverage report as an artifact   
     - name: Code Coverage Report
       uses: actions/upload-artifact@v4
@@ -62,20 +48,32 @@ jobs:
        name: jacoco-report
        path: target/site/jacoco/index.html
 
-    # Sonarqube Scan using maven command
+    # SonarQube Scan using maven command
     - name: SonarQube Scan
-      run: mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=${{ secrets.SONAR_PROJECTKEY }} -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}  -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+      run: mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=${{ secrets.SONAR_PROJECTKEY }} -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} -Dsonar.login=${{ secrets.SONAR_TOKEN }}
 
-    # Check sonarqube quality gate
+    # Check SonarQube Quality Gate
     - name: Check SonarQube Quality Gate
       run: |
         status=$(curl -s "${{ secrets.SONAR_HOST_URL }}/api/qualitygates/project_status?projectKey=${{ secrets.SONAR_PROJECTKEY }}" -u "${{ secrets.SONAR_TOKEN }}": | jq -r '.projectStatus.status')
         if [[ "$status" != "OK" ]]; then
-           echo "SonarQube quality gate check passed." 
+          echo "SonarQube quality gate check passed."
         else
-           echo "SonarQube quality gate check succeeded. Continuing with the workflow..."
-        fi
+          echo "SonarQube quality gate check succeeded. Continuing with the workflow..."
+    
+    # Authenticate with Google Cloud SDK
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2  # Use the correct version v2
+      with:
+        project_id: YOUR_PROJECT_ID      # Replace with your Google Cloud project ID
+        credentials_json: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}  # Use the secret containing the Service Account key
 
-    # Once we build the package using maven as build tool the artifact generated is in jar format and store under target directory
+    # Authenticate to Google Cloud
+    - name: Authenticate to Google Cloud
+      run: |
+        gcloud auth activate-service-account --key-file="${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}"
+        gcloud config set project YOUR_PROJECT_ID   # Replace with your Google Cloud project ID
+    
+    # Once we build the package using maven as build tool, the artifact generated is in jar format and stored under target directory
     - name: Build project and package jar
       run: mvn package -Dmaven.test.skip
