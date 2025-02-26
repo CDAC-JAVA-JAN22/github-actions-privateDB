@@ -61,7 +61,7 @@ jobs:
        if [[ "$status" != "OK" ]]; then
           echo "SonarQube quality gate check passed." 
        else
-          echo "SonarQube quality gate check succeeded. Continuing with the workflow..."
+          echo "SonarQube quality gate check failed"
        fi
     # if exit code 1 is added after (echo "SonarQube quality gate check failed.") workflow will fail which will check for quality gate condition 
 
