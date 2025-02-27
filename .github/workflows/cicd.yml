@@ -12,6 +12,7 @@ env:
   PROJECT_ID: 'cicddemo-451910' # update to your Google Cloud project ID
   REGION: 'us-central1' # update to your region
   REPOSITORY: 'my-first-repo'
+  ZONE: 'us-central1-a'
 
 # Define permissions required for the OIDC connection
 permissions:
@@ -123,104 +124,90 @@ jobs:
         DOCKER_IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ github.sha }}"
         docker push $DOCKER_IMAGE
 
-#     # Authenticate AWS with Docker to interact with an Amazon ECR registry
-#     - name: Login to Amazon ECR
-#       run: aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+jobs:
+  # CI job (your existing CI pipeline)
+  build:
+    runs-on: ubuntu-latest
 
-#     # Build the Docker image using Dockerfile & tag it with commit SHA, & push it to ECR repository
-#     - name: Build Docker Image
-#       env:
-#         IMAGE_TAG: ${{ steps.commit.outputs.short }}
-#       run: |
-#           docker build -t humanresource:${{ github.sha }} .
-#           docker tag humanresource:${{ github.sha }} ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/humanresource:${{ github.sha }}
+    # Define the steps for building and testing
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-#     # Run Trivy vulnerability scanner on specified Docker image in the ECR repository
-#     - name: Run Trivy vulnerability scanner
-#       id: trivy-scan
-#       uses: aquasecurity/trivy-action@master
-#       with:
-#         image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/humanresource:${{ github.sha }}
-#         format: 'table'
-#         exit-code: '1'
-#         ignore-unfixed: true
-#         vuln-type: 'os,library'
-#         severity: 'CRITICAL,HIGH'
-#       continue-on-error: true
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
 
-#     # Display boolean value(true/false) depending on the scan report that is received from previous step
-#     - name: Handle Trivy results
-#       if: steps.trivy-scan.outcome == 'failure'
-#       run: |
-#         echo "Vulnerability scan failed!"
+    - name: Run unit test
+      run: mvn test
 
-#     # Display boolean value(true/false) depending on the scan report that is received from previous step
-#     - name: Continue with other steps
-#       if: steps.trivy-scan.outcome == 'success'
-#       run: |
-#         echo "Vulnerability scan succeeded!"
+    - name : Get code-coverage report
+      run : mvn jacoco:report
 
-#     # Push Docker image to Amazon ECR
-#     - name: push docker image
-#       run : |
-#           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/humanresource:${{ github.sha }}
+    - name: Code Coverage Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: Code Coverage Reports
+        path: target/site/jacoco/index.html   # Code coverage report will be generated at 'target/site/jacoco/index.html'
 
-    
-#   # CD job
-#   Deploy:
-#     needs: ci                # This ensures that the deployment process only runs when the Docker image has been successfully built and pushed to Amazon ECR
-#     name: Deploy to EC2
-#     runs-on: ubuntu-latest
-  
-#     steps:
-#       # Checkout the repository
-#       - name: Checkout code      
-#         uses: actions/checkout@v2
+    # Build the jar file using maven
+    - name: Build project and package jar
+      run: mvn package
 
-#       # Create known_hosts file inside SSH directory 
-#       - name: Create SSH directory and known_hosts file
-#         run: |
-#             mkdir -p ~/.ssh
-#             touch ~/.ssh/known_hosts
+    # Authenticate to Google Cloud using OIDC
+    - name: Authenticate to Google Cloud using OIDC
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        token_format: 'access_token'
+        workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+        service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
-#       # Add private key to id_rsa
-#       - name: Extract SSH private key
-#         run: echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-#         shell: bash
+    - name: Authenticate Docker to Artifact Registry
+      run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
-#       # Grant read-write permission to id_rsa
-#       - name: Set proper permissions for the private key
-#         run: chmod 600 ~/.ssh/id_rsa
+    - name: Build and Push Container to Artifact Registry
+      run: |
+        DOCKER_IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ github.sha }}"
+        docker build -t $DOCKER_IMAGE .
+        docker push $DOCKER_IMAGE
 
-#       # Install SSH Client
-#       - name: Install SSH Client
-#         run: sudo apt-get install -y openssh-client 
+  # CD job (Deploy to VM)
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build  # Ensure deployment only happens after the build step
 
-#       # Build trust between GitHub and AWS using OIDC connector
-#       - name: configure aws credentials
-#         uses: aws-actions/configure-aws-credentials@v3
-#         with:
-#           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-#           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-#           aws-region: ${{ secrets.AWS_REGION }}
+    steps:
+    # Authenticate to Google Cloud using OIDC again in the CD job
+    - name: Authenticate to Google Cloud using OIDC (CD)
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        token_format: 'access_token'
+        workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+        service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
-#       # Pulling image from ECR and deploying on EC2 which contains docker
-#       - name: Deploy to EC2 with Docker   # In this step we are deploying our application on EC2 instance
-#         run: |
-#             ssh-keyscan -H ${{ secrets.INSTANCE_PUBLIC_IP }} >> ~/.ssh/known_hosts
-#             aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-#             ssh -i ~/.ssh/id_rsa ubuntu@${{ secrets.INSTANCE_PUBLIC_IP }} '
-#                sudo usermod -aG docker $USER
-#                newgrp docker
-#                aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | sudo docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
-#                sudo docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/humanresource
-#                sudo docker run -d -p 8080:8080 ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/humanresource:${{ github.sha }}
-#             '
+    # Get the VM's external IP address
+    - name: Get VM External IP Address
+      id: vm-ip
+      run: |
+        VM_IP=$(gcloud compute instances describe ${{ secrets.VM_NAME }} \
+          --project=${{ env.PROJECT_ID }} \
+          --zone=${{ env.ZONE }} \
+          --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+        echo "VM_IP=$VM_IP" >> $GITHUB_ENV
 
-# #       # ssh-keyscan: This is the command-line utility used to gather public host keys from a specified host. In this case, it's scanning the host specified by the value of the INSTANCE_PUBLIC_IP secret.
-# #       # -H: This option hashes the hostnames and addresses in the output. It's a security measure to avoid exposing the actual host information in the known_hosts file.
-# #       # >> ~/.ssh/known_hosts: This part of the command appends the output of the ssh-keyscan command to the known_hosts file in the SSH directory (~/.ssh). The >> operator is used for appending to a file.
+    # SSH into the VM and deploy Docker container
+    - name: Deploy Docker image to VM
+      run: |
+        # Pull the Docker image from Artifact Registry and run it on the VM
+        gcloud compute ssh [USERNAME]@${{ secrets.VM_IP }} \
+          --project=${{ env.PROJECT_ID }} \
+          --zone=${{ env.ZONE }} \
+          --command "
+            docker pull $DOCKER_IMAGE &&
+            docker run -d -p 80:80 $DOCKER_IMAGE
+          "
 
-# #       # ssh: This is the command to establish an SSH connection.
-# #       # -i ~/.ssh/id_rsa: This option specifies the identity file to be used for authentication. In this case, it points to the private key file ~/.ssh/id_rsa.
-# #       # ubuntu@${{ secrets.INSTANCE_PUBLIC_IP }}: This is the SSH connection string. It specifies the username (ubuntu) and the host to connect to, which is likely retrieved from the INSTANCE_PUBLIC_IP secret.
