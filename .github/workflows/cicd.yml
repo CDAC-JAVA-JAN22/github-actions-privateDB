@@ -11,7 +11,7 @@ on:
 env:
   PROJECT_ID: 'cicddemo-451910' # update to your Google Cloud project ID
   REGION: 'us-central1' # update to your region
-  REPOSITORY: 'java-repo'
+  REPOSITORY: 'my-first-repo'
 
 # Define permissions required for the OIDC connection
 permissions:
@@ -92,6 +92,26 @@ jobs:
         workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
         service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
+    - name: Authenticate Docker to Artifact Registry
+      run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+    - name: Build and Push Container to Artifact Registry
+      run: |
+        DOCKER_IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ github.sha }}"
+        docker build -t $DOCKER_IMAGE .
+
+    # Scan Docker Image using Trivy before pushing
+    - name: Scan Docker Image with Trivy
+      run: |
+        DOCKER_IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ github.sha }}"
+        trivy image --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL $DOCKER_IMAGE
+
+    # Push to Artifact Registry if scan is successful
+    - name: Push Docker Image to Artifact Registry
+      if: success()
+      run: |
+        DOCKER_IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ github.sha }}"
+        docker push $DOCKER_IMAGE
 
 #     # Authenticate AWS with Docker to interact with an Amazon ECR registry
 #     - name: Login to Amazon ECR
