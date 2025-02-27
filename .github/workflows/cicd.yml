@@ -99,7 +99,17 @@ jobs:
       run: |
         DOCKER_IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ github.sha }}"
         docker build -t $DOCKER_IMAGE .
-
+        
+    - name: Run Trivy vulnerability scanner in repo mode
+      id: trivyscan
+      uses: aquasecurity/trivy-action@master
+      with:
+         scan-type: 'fs'
+         scan-ref: '.'
+         trivy-config: trivy.yaml
+         format: 'table'
+         severity: 'CRITICAL,HIGH,MEDIUM'
+         
     # Scan Docker Image using Trivy before pushing
     - name: Scan Docker Image with Trivy
       run: |
