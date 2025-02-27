@@ -8,10 +8,16 @@ on:
     branches:
       - main
 
+env:
+  PROJECT_ID: 'cicddemo-451910' # update to your Google Cloud project ID
+  REGION: 'us-central1' # update to your region
+  REPOSITORY: 'java-repo'
+
 # Define permissions required for the OIDC connection
 permissions:
   id-token: write                    # This is required for requesting the JWT
   contents: read                     # # This permission allows reading the content of files in the repository
+
 
 # The jobs to be executed in the workflow
 jobs:
@@ -77,6 +83,15 @@ jobs:
 #           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
 #           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 #           aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Authenticate to Google Cloud using OIDC
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        token_format: 'access_token'
+        workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+        service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
 
 #     # Authenticate AWS with Docker to interact with an Amazon ECR registry
 #     - name: Login to Amazon ECR
